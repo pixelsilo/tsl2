@@ -1,0 +1,8 @@
+.map-tooltip {
+  max-width: 13rem;
+  width: 13rem;
+}
+.map-tooltip .plot-card {
+  width: 100%;
+  max-width: 100%;
+}
