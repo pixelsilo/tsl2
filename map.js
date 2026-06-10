@@ -353,8 +353,17 @@ document.addEventListener("DOMContentLoaded", () => {
       map = new google.maps.Map(mapEl, {
         center: { lat: 54.5, lng: -2.5 },
         zoom: 6,
-        mapTypeControl: false,
-        streetViewControl: false,
+        mapTypeId: "roadmap",
+        mapTypeControl: true,
+        mapTypeControlOptions: {
+          style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+          position: google.maps.ControlPosition.TOP_RIGHT,
+          mapTypeIds: ["roadmap", "satellite"]
+        },
+        streetViewControl: true,
+        streetViewControlOptions: {
+          position: google.maps.ControlPosition.TOP_RIGHT
+        },
         fullscreenControl: false,
         mapId: MAP_ID
       });
