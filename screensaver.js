@@ -1,6 +1,6 @@
 (function() {
     var timeBeforeRedirect = 10 * 60 * 1000; // 10 minutes in milliseconds
-    var redirectUrl = '/'; // '/screensaver'
+    var redirectUrl = '/screensaver'; // '/screensaver'
     var inactivityTimer;
 
     function resetTimer() {
