@@ -66,6 +66,19 @@
       boundsPadding: 0.5
     });
 
+    // Center the square map within the rectangular window on load
+    requestAnimationFrame(() => {
+      const content = mapFlex.querySelector(MAP_CONTAINER_SEL);
+      if (content) {
+        // Measure the viewport (mapFlex) vs the actual square content (m-container)
+        const vW = mapFlex.clientWidth;
+        const vH = mapFlex.clientHeight;
+        const mW = content.offsetWidth;
+        const mH = content.offsetHeight;
+        pz.moveTo((vW - mW) / 2, (vH - mH) / 2);
+      }
+    });
+
     // Prevent <a> inside the map from triggering pan/drag
     const stopPanOnAnchors = (e) => {
       if (e.target && e.target.closest && e.target.closest("a")) {
@@ -200,10 +213,18 @@
     scanAndAttach();
     debouncedRebuild();
 
-    // If lists appear later (tabs/filters/etc.), attach and rebuild
-    const moLists = new MutationObserver(() => {
-      scanAndAttach();
-      debouncedRebuild();
+    // If lists appear/disappear later (tabs/filters/etc.), attach and rebuild.
+    // Optimized to only fire when list wrappers are added/removed, avoiding pin rebuild loops.
+    const moLists = new MutationObserver((mutations) => {
+      const hasListChange = mutations.some(m => 
+        Array.from(m.addedNodes).some(n => n.nodeType === 1 && (n.matches?.(LIST_SEL) || n.querySelector?.(LIST_SEL))) ||
+        Array.from(m.removedNodes).some(n => n.nodeType === 1 && (n.matches?.(LIST_SEL) || n.querySelector?.(LIST_SEL)))
+      );
+
+      if (hasListChange) {
+        scanAndAttach();
+        debouncedRebuild();
+      }
     });
     moLists.observe(document.body, { childList: true, subtree: true });
 
@@ -237,11 +258,10 @@
     const tip = document.createElement("div");
     tip.className = "map-tooltip";
     tip.style.position = "absolute";
-    tip.style.left = "0px";
-    tip.style.top = "0px";
     tip.style.zIndex = "9999";
     tip.style.display = "none";
     tip.style.pointerEvents = "auto";
+    tip.style.userSelect = "auto";
     map.appendChild(tip);
 
     if (!document.getElementById("map-tooltip-css")) {
@@ -250,8 +270,14 @@
       s.textContent = `
         .map-tooltip { display:none; }
         .map-tooltip.is-open { display:block; }
-        .map-tooltip .plot-card { max-width: 340px; }
+        .map-tooltip .plot-card { 
+          max-width: 340px; 
+          pointer-events: auto !important; 
+          cursor: pointer; 
+          -webkit-tap-highlight-color: transparent;
+        }
         .plot_ci.is-pin-target { outline: 2px solid currentColor; outline-offset: 4px; }
+        .pin > * { pointer-events: none; }
       `;
       document.head.appendChild(s);
     }
@@ -298,6 +324,8 @@
     }
 
     function positionTooltip(pinWrap) {
+      if (!pinWrap || !pinWrap.isConnected) return;
+
       const pinRect = pinWrap.getBoundingClientRect();
       const mapRect = map.getBoundingClientRect();
 
@@ -332,9 +360,17 @@
     function openTooltip(pinWrap) {
       stopCloseTimer();
 
-      if (activePin === pinWrap && tip.classList.contains("is-open")) {
-        positionTooltip(pinWrap);
+      const isOpen = tip.classList.contains("is-open");
+
+      // If the tooltip for this pin is already open, do nothing. 
+      // This ensures smooth hover even if sub-elements trigger events.
+      if (activePin === pinWrap && isOpen) {
         return;
+      }
+
+      // If another pin is open, clear it first
+      if (isOpen) {
+        closeTooltip();
       }
 
       const card = findCardForPin(pinWrap);
@@ -345,13 +381,23 @@
       tip.innerHTML = "";
       tip.appendChild(card.cloneNode(true));
       tip.style.display = "block";
-      tip.classList.add("is-open");
-      positionTooltip(pinWrap);
+
+      // Use requestAnimationFrame to ensure the browser has computed 
+      // the dimensions of the newly added card before positioning.
+      requestAnimationFrame(() => {
+        if (activePin !== pinWrap) return;
+        tip.classList.add("is-open");
+        positionTooltip(pinWrap);
+      });
     }
 
-    // Keep tooltip clickable
-    tip.addEventListener("pointerdown", (e) => e.stopPropagation(), true);
-    tip.addEventListener("click", (e) => e.stopPropagation(), true);
+    // Keep tooltip clickable and isolate from map/panzoom interactions.
+    // Using bubble phase (false) ensures that links/buttons inside the tooltip
+    // receive events before propagation is stopped.
+    const isolate = (e) => e.stopPropagation();
+    ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "click"].forEach(ev => {
+      tip.addEventListener(ev, isolate, false);
+    });
 
     // Click off map closes tooltip (desktop)
     map.addEventListener("click", (e) => {
@@ -369,14 +415,18 @@
     }
 
     // ===== Interaction mode switch =====
-    if (isHoverDevice() && !isMobileLayout()) {
-      // Desktop: hover tooltip
+    if (!isMobileLayout()) {
+      // Desktop/Tablet (Large Screen): Tooltips
+
+      // Mouse Hover Support
       mapContainer.addEventListener("pointerover", (e) => {
+        if (e.pointerType !== "mouse") return;
         const pinWrap = e.target.closest(PIN_WRAP_SEL);
         if (pinWrap) openTooltip(pinWrap);
       });
 
       mapContainer.addEventListener("pointerout", (e) => {
+        if (e.pointerType !== "mouse") return;
         const leavingPin = e.target.closest(PIN_WRAP_SEL);
         if (!leavingPin) return;
 
@@ -387,13 +437,48 @@
         closeTimer = setTimeout(closeTooltip, 80);
       });
 
+      // Touch / Tap Support (Desktop Touchscreen)
+      let down = null;
+      mapContainer.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse") return;
+        const pinWrap = e.target.closest(PIN_WRAP_SEL);
+        if (!pinWrap) return;
+
+        down = { pinWrap, x: e.clientX, y: e.clientY };
+        // Prevent panzoom from dragging when starting a tap on a pin
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+
+      mapContainer.addEventListener("pointerup", (e) => {
+        if (!down) return;
+
+        const dx = Math.abs(e.clientX - down.x);
+        const dy = Math.abs(e.clientY - down.y);
+        const pinWrap = down.pinWrap;
+        down = null;
+
+        if (dx > 8 || dy > 8) return; // ignore if panned
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        // For touch/tap, handle the "toggle" behavior (close if tapping the same pin).
+        if (activePin === pinWrap && tip.classList.contains("is-open")) {
+          closeTooltip();
+        } else {
+          openTooltip(pinWrap);
+        }
+      }, true);
+
       tip.addEventListener("pointerenter", stopCloseTimer);
-      tip.addEventListener("pointerleave", () => {
+      tip.addEventListener("pointerleave", (e) => {
+        if (e.pointerType !== "mouse") return;
         stopCloseTimer();
         closeTimer = setTimeout(closeTooltip, 80);
       });
     } else {
-      // Mobile/tablet: tap pin -> scroll list to item (no tooltip)
+      // Mobile Layout: tap pin -> scroll list to item (no tooltip)
       let down = null;
 
       mapContainer.addEventListener(
