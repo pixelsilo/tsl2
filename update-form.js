@@ -75,7 +75,7 @@
     selectEl.innerHTML = '';
     if (placeholder) selectEl.appendChild(placeholder);
 
-    const names = Object.keys(plotData).sort();
+    const names = Object.keys(plotData);
     names.forEach(name => {
       const opt = document.createElement('option');
       opt.value = name;
