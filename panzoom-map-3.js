@@ -66,18 +66,21 @@
       boundsPadding: 0.5
     });
 
-    // Center the square map within the rectangular window on load
-    requestAnimationFrame(() => {
+    const centerMap = () => {
       const content = mapFlex.querySelector(MAP_CONTAINER_SEL);
       if (content) {
-        // Measure the viewport (mapFlex) vs the actual square content (m-container)
         const vW = mapFlex.clientWidth;
         const vH = mapFlex.clientHeight;
-        const mW = content.offsetWidth;
-        const mH = content.offsetHeight;
+        const mW = content.getBoundingClientRect().width;
+        const mH = content.getBoundingClientRect().height;
         pz.moveTo((vW - mW) / 2, (vH - mH) / 2);
       }
-    });
+    };
+
+    // Center the square map after layout has fully settled.
+    const scheduleCenter = () => requestAnimationFrame(() => requestAnimationFrame(centerMap));
+    scheduleCenter();
+    window.addEventListener("load", scheduleCenter, { once: true });
 
     // Prevent <a> inside the map from triggering pan/drag
     const stopPanOnAnchors = (e) => {

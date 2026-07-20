@@ -136,9 +136,9 @@
     if (data) {
       if (availabilitySelect) availabilitySelect.value = data.availability || "";
       if (priceInput) priceInput.value = formatCurrency(data.price);
-      if (sharePriceInput) sharePriceInput.value = normalizeNumber(data["share-price"]);
-      if (rentInput) rentInput.value = normalizeNumber(data.rent);
-      if (serviceChargeInput) serviceChargeInput.value = normalizeNumber(data["service-charge"]);
+      if (sharePriceInput) sharePriceInput.value = formatCurrency(data["share-price"]);
+      if (rentInput) rentInput.value = formatCurrency(data.rent);
+      if (serviceChargeInput) serviceChargeInput.value = formatCurrency(data["service-charge"]);
       if (statusSelect) statusSelect.value = data.status || statusSelect.options[0]?.value || "";
       if (plotNumberHidden) plotNumberHidden.value = data.plot_number || "";
     } else {
